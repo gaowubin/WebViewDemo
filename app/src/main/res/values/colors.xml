@@ -3,4 +3,16 @@
     <color name="colorPrimary">#008577</color>
     <color name="colorPrimaryDark">#00574B</color>
     <color name="colorAccent">#D81B60</color>
+    <color name="white">#FFFFFF</color><!--白色 -->
+    <color name="black">#000000</color>
+
+    <color name="black_T54">#8A000000</color>
+    <color name="transparent">#00000000</color>
+    <color name="color_333333">#333333</color>
+    <color name="D4D4D4">#D4D4D4</color>
+    <color name="white_T30">#4DFFFFFF</color><!--白色 -->
+    <color name="gray">#cccccc</color>
+    <color name="fac835">#fac835</color>
+    <color name="color_999999">#999999</color>
+    <color name="f7f7f7">#f7f7f7</color>
 </resources>

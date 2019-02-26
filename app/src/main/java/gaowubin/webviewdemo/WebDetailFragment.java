@@ -1,57 +1,108 @@
 package gaowubin.webviewdemo;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
+import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.FileProvider;
-import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.GeolocationPermissions;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.tbruyelle.rxpermissions2.RxPermissions;
 
 import java.io.File;
 
+import butterknife.BindView;
+import butterknife.ButterKnife;
+import butterknife.OnClick;
+import butterknife.Unbinder;
 import io.reactivex.functions.Consumer;
 
-public class MainActivity extends AppCompatActivity {
+import static android.app.Activity.RESULT_OK;
+
+public class WebDetailFragment extends Fragment {
+
 
     private final static int REQUEST_CODE_RECORDER_IMAGE = 100;
     private final static int REQUEST_CODE_RECORDER_VIDEO = 120;
-    private WebView mWebView;
-    private Uri imageUri;
+    @BindView(R.id.webView)
+    WebView mWebView;
+    @BindView(R.id.webView_progressBar)
+    ProgressBar mWebViewProgressBar;
+    Unbinder unBinder;
+    @BindView(R.id.tvTitle)
+    TextView mTvTitle;
+    Context mContext;
     private ValueCallback<Uri> mUploadFile;
     private ValueCallback<Uri[]> mFilePathCallback;
+    private Uri imageUri;
+
+    public static WebDetailFragment newInstance(Bundle args) {
+        WebDetailFragment fragment = new WebDetailFragment();
+        fragment.setArguments(args);
+        return fragment;
+    }
+
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        mWebView = findViewById(R.id.webView);
+    public void onAttach(Context context) {
+        super.onAttach(context);
+        mContext = context;
+    }
 
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-//            mWebView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-//        }
-        mWebView.getSettings().setCacheMode(ActivityUtils.isNetConnected(getApplicationContext()) ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_web_detial, container, false);
+        unBinder = ButterKnife.bind(this, view);
+        return view;
+    }
+
+    @Override
+    public void onActivityCreated(@Nullable Bundle savedInstanceState) {
+        super.onActivityCreated(savedInstanceState);
+        String title = getArguments().getString("title");
+        mTvTitle.setText("" + title);
+        mWebView.getSettings().setCacheMode(ActivityUtils.isNetConnected(mContext) ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
         mWebView.getSettings().setUseWideViewPort(true);
         mWebView.getSettings().setDomStorageEnabled(true);
         mWebView.getSettings().setAllowFileAccess(true);
         mWebView.getSettings().setJavaScriptEnabled(true);
         mWebView.getSettings().setAppCacheEnabled(true);
         mWebView.getSettings().setBlockNetworkImage(false);
+        //启用数据库
+        mWebView.getSettings().setDatabaseEnabled(true);
+
+
+        String dir = mContext.getDir("database", Context.MODE_PRIVATE).getPath();
+        mWebView.getSettings().setGeolocationDatabasePath(dir);
+
+
+        mWebView.getSettings().setGeolocationEnabled(true);
+
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
@@ -68,13 +119,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
 
-                Log.i("test", " shouldOverrideUrlLoading url: " + url);
-                //如果url以weixin://开头，表示要拉起微信；以alipay开头表示要拉起支付宝；以tel:开头表示拔打电话
-                if (url.startsWith("weixin://") || url.startsWith("alipay") || url.startsWith("tel:")) {
+                Log.i("info", " shouldOverrideUrlLoading url: " + url);
+                if (url.startsWith("weixin://") || url.startsWith("alipay") || url.startsWith("tel:") || url.contains(".apk")) {
                     try {//try catch 以免崩溃
                         Intent intent = new Intent(Intent.ACTION_VIEW);
                         intent.setData(Uri.parse(url));
-                        PackageManager packageManager = getPackageManager();
+                        PackageManager packageManager = mContext.getPackageManager();
                         if (intent.resolveActivity(packageManager) != null) {
                             startActivity(intent);
                             return true;//处理成功不调用默认实现
@@ -82,13 +132,44 @@ public class MainActivity extends AppCompatActivity {
                     } catch (Exception e) {
                     }
                 }
-                // 其它调用默认实现(即return false 浏览器自己会处理页面跳转)
-                // 注意不可用view.loadUrl(url),会丢失referer导致微信支付报“商家参数格式有误”的错
-                return super.shouldOverrideUrlLoading(view, url);
+                return false;
             }
         });
 
         mWebView.setWebChromeClient(new WebChromeClient() {
+
+            @Override
+            public void onReceivedTitle(WebView view, String title) {
+                super.onReceivedTitle(view, title);
+            }
+
+            @Override
+            public void onReceivedIcon(WebView view, Bitmap icon) {
+                super.onReceivedIcon(view, icon);
+
+            }
+
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+                super.onGeolocationPermissionsShowPrompt(origin, callback);
+
+            }
+
+            @Override
+            public void onProgressChanged(WebView view, int newProgress) {
+                if (mWebViewProgressBar == null) return;
+                mWebViewProgressBar.setProgress(newProgress);
+                if (newProgress == 100) {
+                    mWebViewProgressBar.setVisibility(View.GONE);
+                } else {
+                    if (mWebViewProgressBar.getVisibility() == View.GONE) {
+                        mWebViewProgressBar.setVisibility(View.VISIBLE);
+                    }
+
+                }
+            }
 
             //Android 5.0 以下 必须重写此方法
             public void openFileChooser(final ValueCallback<Uri> uploadFile, String acceptType, String capture) {
@@ -151,36 +232,21 @@ public class MainActivity extends AppCompatActivity {
                 return super.onShowFileChooser(webView, filePathCallback, fileChooserParams);
             }
         });
-
-        String url = "https://m-stg2.tianxiaxinyong.com/cooperation/b-test.html";
-        Log.i("test", "url: " + url);
-
+        String url = getArguments().getString("url");
+        Log.i("info", "url: " + url);
 
         mWebView.loadUrl(url);
-    }
 
-    private void requestPermissions() {
-        final RxPermissions rxPermissions = new RxPermissions(this);
-        rxPermissions
-                .request(Manifest.permission.CAMERA)
-                .subscribe(new Consumer<Boolean>() {
-                    @Override
-                    public void accept(Boolean aBoolean) throws Exception {
-                        if (aBoolean) { // Always true pre-M
-                        } else {
-                            Toast.makeText(MainActivity.this, "请开启相机权限", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                });
+
     }
 
     private boolean captureVideoFromCamera() {
         File cacheDir = null;
         if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-            cacheDir = new File(getExternalCacheDir(), "video");
+            cacheDir = new File(mContext.getExternalCacheDir(), "video");
         }
         if (cacheDir == null) {
-            cacheDir = new File(getCacheDir(), "video");
+            cacheDir = new File(mContext.getCacheDir(), "video");
         }
         if (!cacheDir.exists()) {
             cacheDir.mkdirs();
@@ -189,7 +255,7 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) {//如果api大于Android api23 要替换获取文件Uri方式
             //此方法第二个参数authority的值要用项目中的值来替换,可网上找Android 7.0 FileProvider相关介绍
-            Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", outFile);
+            Uri uri = FileProvider.getUriForFile(mContext, getActivity().getPackageName() + ".fileprovider", outFile);
             intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);//加入flag
         } else {
@@ -198,8 +264,8 @@ public class MainActivity extends AppCompatActivity {
             intent.addCategory(Intent.CATEGORY_DEFAULT);
         }
         //调系统相机拍摄视频需要用到相机权限，先判断有没有这个权限
-        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {//有相机权限
-            PackageManager packageManager = getPackageManager();
+        if (ContextCompat.checkSelfPermission(mContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {//有相机权限
+            PackageManager packageManager = getActivity().getPackageManager();
             if (intent.resolveActivity(packageManager) != null) {
                 try {
                     startActivityForResult(intent, REQUEST_CODE_RECORDER_VIDEO);
@@ -209,7 +275,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         } else {//没有相机权限
-            requestPermissions();
+            requestPermissionsCamera();
+
         }
         return false;
     }
@@ -218,10 +285,10 @@ public class MainActivity extends AppCompatActivity {
     private boolean captureImageFromCamera() {
         File cacheDir = null;
         if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-            cacheDir = new File(getExternalCacheDir(), "images");
+            cacheDir = new File(mContext.getExternalCacheDir(), "images");
         }
         if (cacheDir == null) {
-            cacheDir = new File(getCacheDir(), "images");
+            cacheDir = new File(mContext.getCacheDir(), "images");
         }
         if (!cacheDir.exists()) {
             cacheDir.mkdirs();
@@ -230,7 +297,7 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M) {//如果api大于Android api23 要替换获取文件Uri方式
             //此方法第二个参数authority的值要用项目中的值来替换,可网上找Android 7.0 FileProvider相关介绍
-            imageUri = FileProvider.getUriForFile(MainActivity.this, BuildConfig.APPLICATION_ID + ".fileprovider", outFile);
+            imageUri = FileProvider.getUriForFile(mContext, BuildConfig.APPLICATION_ID + ".fileprovider", outFile);
             intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                     | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -239,8 +306,8 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
             intent.addCategory(Intent.CATEGORY_DEFAULT);
         }
-        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {//有相机权限
-            PackageManager packageManager = getPackageManager();
+        if (ContextCompat.checkSelfPermission(mContext, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {//有相机权限
+            PackageManager packageManager = getActivity().getPackageManager();
             if (intent.resolveActivity(packageManager) != null) {
                 try {
                     startActivityForResult(intent, REQUEST_CODE_RECORDER_IMAGE);
@@ -250,13 +317,67 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         } else {//没有相机权限
-            requestPermissions();
+            requestPermissionsCamera();
         }
         return false;
     }
 
+    private void requestPermissionsCamera() {
+        final RxPermissions rxPermissions = new RxPermissions(this);
+        rxPermissions
+                .request(Manifest.permission.CAMERA)
+                .subscribe(new Consumer<Boolean>() {
+                    @Override
+                    public void accept(Boolean aBoolean) throws Exception {
+                        if (aBoolean) { // Always true pre-M
+                            Log.i("info", "已开启相机权限");
+                        } else {
+                            Toast.makeText(mContext, "请开启相机权限", Toast.LENGTH_LONG).show();
+                        }
+                    }
+                });
+    }
+
+
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    public void onDestroyView() {
+        super.onDestroyView();
+        unBinder.unbind();
+    }
+
+    public boolean onBackPressed() {
+        if (mWebView.canGoBack()) {
+            mWebView.goBack();
+        } else {
+            mWebView.setWebViewClient(null);
+            mWebView.clearHistory();
+            mWebView.clearFormData();
+            mWebView.clearCache(true);
+            getActivity().deleteDatabase("webview.db");
+            getActivity().deleteDatabase("webviewCache.db");
+            getActivity().finish();
+        }
+        return false;
+    }
+
+    @OnClick(R.id.btnReturn)
+    public void onViewClicked() {
+        if (mWebView.canGoBack()) {
+            mWebView.goBack();
+        } else {
+            mWebView.setWebViewClient(null);
+            mWebView.clearHistory();
+            mWebView.clearFormData();
+            mWebView.clearCache(true);
+            getActivity().deleteDatabase("webview.db");
+            getActivity().deleteDatabase("webviewCache.db");
+            getActivity().finish();
+        }
+    }
+
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         Uri uri = null;
         if (requestCode == REQUEST_CODE_RECORDER_VIDEO && resultCode == RESULT_OK && data != null) {
@@ -283,15 +404,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 mUploadFile = null;
             }
-        }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (mWebView.canGoBack()) {
-            mWebView.goBack();
-        } else {
-            finish();
         }
     }
 }
